@@ -29,28 +29,24 @@ jobs:
 
       - name: Check Project
         run: |
-          echo "=== PROJECT ==="
-          ls -la Blendora
+          echo "=== ROOT ==="
+          pwd
+          ls -la
 
           echo ""
-          echo "=== APP MODULE ==="
-          ls -la Blendora/app
+          echo "=== APP ==="
+          ls -la app
 
           echo ""
           echo "=== GRADLE FILES ==="
-          find Blendora -maxdepth 3 -type f \
+          find . -maxdepth 3 -type f \
             \( -name "settings.gradle.kts" -o -name "build.gradle.kts" \) \
             -print
 
       - name: Build Debug APK
-        working-directory: Blendora
         run: |
           set +e
 
-          echo "=== BUILD DIRECTORY ==="
-          pwd
-
-          echo ""
           echo "=== BUILDING BLENDORA ==="
 
           gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
@@ -58,9 +54,7 @@ jobs:
           BUILD_EXIT=${PIPESTATUS[0]}
 
           echo ""
-          echo "========================================"
           echo "BUILD EXIT CODE: $BUILD_EXIT"
-          echo "========================================"
 
           if [ "$BUILD_EXIT" -ne 0 ]; then
             echo ""
@@ -79,17 +73,15 @@ jobs:
           fi
 
           echo ""
-          echo "========================================"
           echo "BUILD SUCCESSFUL"
-          echo "========================================"
 
       - name: Verify APK
         run: |
           echo "=== APK FILES ==="
 
-          find Blendora/app/build/outputs -type f -name "*.apk" -print
+          find app/build/outputs -type f -name "*.apk" -print
 
-          if [ ! -f "Blendora/app/build/outputs/apk/debug/app-debug.apk" ]; then
+          if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
             echo "ERROR: APK was not generated."
             exit 1
           fi
@@ -101,5 +93,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Blendora-APK
-          path: Blendora/app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
