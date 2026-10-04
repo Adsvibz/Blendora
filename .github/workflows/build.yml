@@ -1,146 +1,85 @@
-name: Build APK
+name: Build Blendora APK
 
 on:
-  push:
   workflow_dispatch:
+  push:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Find ZIP
+        id: zip
+        run: |
+          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found in repository."
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP_FILE"
+          echo "zip_file=$ZIP_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Extract project
+        run: |
+          rm -rf extracted
+          mkdir extracted
+          unzip -q "${{ steps.zip.outputs.zip_file }}" -d extracted
+
+      - name: Locate Android project
+        id: project
+        run: |
+          SETTINGS=$(find extracted -type f \( \
+            -name "settings.gradle.kts" -o \
+            -name "settings.gradle" \
+          \) -print -quit)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: No Gradle settings file found."
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          echo "Android project found at: $PROJECT_DIR"
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+          if [ ! -d "$PROJECT_DIR/app" ]; then
+            echo "ERROR: app module not found."
+            exit 1
+          fi
+
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Accept Android Licenses
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: "8.5"
 
-      - name: Find Android Project
-        id: project
-        run: |
-          echo "========================================"
-          echo "REPOSITORY CONTENTS"
-          echo "========================================"
-
-          find . -maxdepth 5 -type f | sort | head -300
-
-          echo ""
-          echo "========================================"
-          echo "SEARCHING FOR GRADLE PROJECT"
-          echo "========================================"
-
-          SETTINGS=$(find . -type f -name "settings.gradle.kts" -print -quit)
-
-          if [ -z "$SETTINGS" ]; then
-            SETTINGS=$(find . -type f -name "settings.gradle" -print -quit)
-          fi
-
-          if [ -z "$SETTINGS" ]; then
-            echo "ERROR: No settings.gradle or settings.gradle.kts found."
-            echo ""
-            echo "All directories:"
-            find . -type d | sort
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          echo "Gradle settings found:"
-          echo "$SETTINGS"
-
-          echo ""
-          echo "PROJECT DIRECTORY:"
-          echo "$PROJECT_DIR"
-
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
-          echo ""
-          echo "========================================"
-          echo "PROJECT CONTENTS"
-          echo "========================================"
-
-          ls -la "$PROJECT_DIR"
-
-          echo ""
-          echo "========================================"
-          echo "APP MODULE"
-          echo "========================================"
-
-          if [ ! -d "$PROJECT_DIR/app" ]; then
-            echo "ERROR: app module not found."
-            echo ""
-            echo "Directories inside project:"
-            find "$PROJECT_DIR" -maxdepth 3 -type d | sort
-            exit 1
-          fi
-
-          ls -la "$PROJECT_DIR/app"
-
-      - name: Build Debug APK
+      - name: Build APK
         working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
-          set +e
-
-          echo "========================================"
-          echo "BUILDING APK"
-          echo "========================================"
-
-          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
-
-          BUILD_EXIT=${PIPESTATUS[0]}
-
-          echo ""
-          echo "BUILD EXIT CODE: $BUILD_EXIT"
-
-          if [ "$BUILD_EXIT" -ne 0 ]; then
-            echo ""
-            echo "========================================"
-            echo "BUILD ERRORS"
-            echo "========================================"
-
-            grep -iE \
-              "error|exception|failed|failure|caused by|could not|unable|resource linking|manifest merger|compilation" \
-              build.log | tail -200 || true
-
-            echo ""
-            echo "========================================"
-            echo "LAST 200 LINES"
-            echo "========================================"
-
-            tail -200 build.log
-
-            exit "$BUILD_EXIT"
-          fi
-
-          echo ""
-          echo "========================================"
-          echo "BUILD SUCCESSFUL"
-          echo "========================================"
-
-      - name: Find APK
-        working-directory: ${{ steps.project.outputs.project_dir }}
-        run: |
-          echo "========================================"
-          echo "APK FILES"
-          echo "========================================"
-
-          find . -type f -name "*.apk" -print
+          gradle assembleDebug --no-daemon --console=plain
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Blendora-APK
-          path: "**/app/build/outputs/apk/debug/app-debug.apk"
+          path: ${{ steps.project.outputs.project_dir }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
