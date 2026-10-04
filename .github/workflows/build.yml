@@ -8,10 +8,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: Blendora
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,16 +27,27 @@ jobs:
         with:
           gradle-version: "8.5"
 
-      - name: Check Project
+      - name: Check Project Structure
         run: |
-          echo "=== PROJECT ==="
+          echo "=== CURRENT DIRECTORY ==="
           pwd
+
           echo ""
-          echo "=== FILES ==="
+          echo "=== PROJECT FILES ==="
           ls -la
+
           echo ""
           echo "=== APP MODULE ==="
           ls -la app
+
+          echo ""
+          echo "=== GRADLE FILES ==="
+          find . -maxdepth 3 -type f \( \
+            -name "settings.gradle" \
+            -o -name "settings.gradle.kts" \
+            -o -name "build.gradle" \
+            -o -name "build.gradle.kts" \
+          \) -print
 
       - name: Build Debug APK
         run: |
@@ -76,7 +83,8 @@ jobs:
 
       - name: Verify APK
         run: |
-          echo "=== APK FILES ==="
+          echo "=== GENERATED APK FILES ==="
+
           find app/build/outputs -type f -name "*.apk" -print
 
           if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
@@ -91,5 +99,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Blendora-APK
-          path: Blendora/app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
