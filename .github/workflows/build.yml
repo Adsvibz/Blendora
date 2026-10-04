@@ -27,16 +27,73 @@ jobs:
         with:
           gradle-version: "8.5"
 
+      - name: Check Project
+        run: |
+          echo "=== PROJECT STRUCTURE ==="
+          ls -la
+
+          echo ""
+          echo "=== APP DIRECTORY ==="
+          if [ -d "app" ]; then
+            ls -la app
+          else
+            echo "ERROR: app directory not found"
+            exit 1
+          fi
+
       - name: Build APK
         run: |
-          gradle assembleDebug --no-daemon --console=plain > build.log 2>&1 || (
-            echo "=== ERRORS ==="
-            grep -E "^e: " build.log | head -40
-            exit 1
-          )
+          set +e
+
+          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
+
+          BUILD_EXIT=${PIPESTATUS[0]}
+
+          echo ""
+          echo "========================================"
+          echo "BUILD EXIT CODE: $BUILD_EXIT"
+          echo "========================================"
+
+          if [ "$BUILD_EXIT" -ne 0 ]; then
+            echo ""
+            echo "========================================"
+            echo "LAST 200 LINES OF BUILD LOG"
+            echo "========================================"
+
+            tail -200 build.log
+
+            echo ""
+            echo "========================================"
+            echo "ERROR / FAILURE / EXCEPTION LINES"
+            echo "========================================"
+
+            grep -iE \
+              "error|exception|failed|failure|caused by|could not|unable to|resource linking|manifest merger|compilation" \
+              build.log | tail -150 || true
+
+            echo ""
+            echo "========================================"
+            echo "BUILD FAILED"
+            echo "========================================"
+
+            exit "$BUILD_EXIT"
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "BUILD SUCCESSFUL"
+          echo "========================================"
+
+      - name: Find APK
+        if: success()
+        run: |
+          echo "=== GENERATED APK FILES ==="
+          find app/build/outputs -type f -name "*.apk" -print
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Blendora-APK
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
