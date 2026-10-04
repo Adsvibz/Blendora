@@ -12,48 +12,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Repository Structure
-        run: |
-          echo "=== CURRENT DIRECTORY ==="
-          pwd
-
-          echo ""
-          echo "=== TOP LEVEL ==="
-          ls -la
-
-          echo ""
-          echo "=== FIND ANDROID PROJECT ==="
-          find . -maxdepth 4 -type f \( \
-            -name "settings.gradle" \
-            -o -name "settings.gradle.kts" \
-          \) -print
-
-          echo ""
-          echo "=== FIND APP MODULE ==="
-          find . -maxdepth 5 -type d -name "app" -print
-
-      - name: Detect Project Directory
-        id: project
-        shell: bash
-        run: |
-          set -e
-
-          APP_DIR=$(find . -maxdepth 5 -type d -name "app" | head -1)
-
-          if [ -z "$APP_DIR" ]; then
-            echo "ERROR: Could not find Android app module."
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$APP_DIR")
-
-          echo "APP_DIR=$APP_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR"
-
-          PROJECT_DIR="${PROJECT_DIR#./}"
-
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -69,8 +27,23 @@ jobs:
         with:
           gradle-version: "8.5"
 
+      - name: Check Project
+        run: |
+          echo "=== PROJECT ==="
+          ls -la Blendora
+
+          echo ""
+          echo "=== APP MODULE ==="
+          ls -la Blendora/app
+
+          echo ""
+          echo "=== GRADLE FILES ==="
+          find Blendora -maxdepth 3 -type f \
+            \( -name "settings.gradle.kts" -o -name "build.gradle.kts" \) \
+            -print
+
       - name: Build Debug APK
-        working-directory: ${{ steps.project.outputs.project_dir }}
+        working-directory: Blendora
         run: |
           set +e
 
@@ -78,15 +51,7 @@ jobs:
           pwd
 
           echo ""
-          echo "=== PROJECT FILES ==="
-          ls -la
-
-          echo ""
-          echo "=== APP MODULE ==="
-          ls -la app
-
-          echo ""
-          echo "=== BUILDING APK ==="
+          echo "=== BUILDING BLENDORA ==="
 
           gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
 
@@ -99,7 +64,7 @@ jobs:
 
           if [ "$BUILD_EXIT" -ne 0 ]; then
             echo ""
-            echo "========== BUILD ERRORS =========="
+            echo "========== ERRORS =========="
 
             grep -iE \
               "error|exception|failed|failure|caused by|could not|unable to|resource linking|manifest merger|compilation" \
@@ -114,18 +79,27 @@ jobs:
           fi
 
           echo ""
+          echo "========================================"
           echo "BUILD SUCCESSFUL"
+          echo "========================================"
 
-      - name: Find APK
-        working-directory: ${{ steps.project.outputs.project_dir }}
+      - name: Verify APK
         run: |
-          echo "=== GENERATED APK FILES ==="
+          echo "=== APK FILES ==="
 
-          find app/build/outputs -type f -name "*.apk" -print
+          find Blendora/app/build/outputs -type f -name "*.apk" -print
+
+          if [ ! -f "Blendora/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "ERROR: APK was not generated."
+            exit 1
+          fi
+
+          echo ""
+          echo "APK successfully generated."
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Blendora-APK
-          path: "**/app/build/outputs/apk/debug/*.apk"
+          path: Blendora/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
