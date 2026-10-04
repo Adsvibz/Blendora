@@ -27,27 +27,75 @@ jobs:
         with:
           gradle-version: "8.5"
 
-      - name: Check Project
+      - name: Find Android Project
+        id: project
         run: |
-          echo "=== ROOT ==="
-          pwd
-          ls -la
+          echo "========================================"
+          echo "REPOSITORY CONTENTS"
+          echo "========================================"
+
+          find . -maxdepth 5 -type f | sort | head -300
 
           echo ""
-          echo "=== APP ==="
-          ls -la app
+          echo "========================================"
+          echo "SEARCHING FOR GRADLE PROJECT"
+          echo "========================================"
+
+          SETTINGS=$(find . -type f -name "settings.gradle.kts" -print -quit)
+
+          if [ -z "$SETTINGS" ]; then
+            SETTINGS=$(find . -type f -name "settings.gradle" -print -quit)
+          fi
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: No settings.gradle or settings.gradle.kts found."
+            echo ""
+            echo "All directories:"
+            find . -type d | sort
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          echo "Gradle settings found:"
+          echo "$SETTINGS"
 
           echo ""
-          echo "=== GRADLE FILES ==="
-          find . -maxdepth 3 -type f \
-            \( -name "settings.gradle.kts" -o -name "build.gradle.kts" \) \
-            -print
+          echo "PROJECT DIRECTORY:"
+          echo "$PROJECT_DIR"
+
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+          echo ""
+          echo "========================================"
+          echo "PROJECT CONTENTS"
+          echo "========================================"
+
+          ls -la "$PROJECT_DIR"
+
+          echo ""
+          echo "========================================"
+          echo "APP MODULE"
+          echo "========================================"
+
+          if [ ! -d "$PROJECT_DIR/app" ]; then
+            echo "ERROR: app module not found."
+            echo ""
+            echo "Directories inside project:"
+            find "$PROJECT_DIR" -maxdepth 3 -type d | sort
+            exit 1
+          fi
+
+          ls -la "$PROJECT_DIR/app"
 
       - name: Build Debug APK
+        working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
           set +e
 
-          echo "=== BUILDING BLENDORA ==="
+          echo "========================================"
+          echo "BUILDING APK"
+          echo "========================================"
 
           gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
 
@@ -58,14 +106,18 @@ jobs:
 
           if [ "$BUILD_EXIT" -ne 0 ]; then
             echo ""
-            echo "========== ERRORS =========="
+            echo "========================================"
+            echo "BUILD ERRORS"
+            echo "========================================"
 
             grep -iE \
-              "error|exception|failed|failure|caused by|could not|unable to|resource linking|manifest merger|compilation" \
+              "error|exception|failed|failure|caused by|could not|unable|resource linking|manifest merger|compilation" \
               build.log | tail -200 || true
 
             echo ""
-            echo "========== LAST 200 LINES =========="
+            echo "========================================"
+            echo "LAST 200 LINES"
+            echo "========================================"
 
             tail -200 build.log
 
@@ -73,25 +125,22 @@ jobs:
           fi
 
           echo ""
+          echo "========================================"
           echo "BUILD SUCCESSFUL"
+          echo "========================================"
 
-      - name: Verify APK
+      - name: Find APK
+        working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
-          echo "=== APK FILES ==="
+          echo "========================================"
+          echo "APK FILES"
+          echo "========================================"
 
-          find app/build/outputs -type f -name "*.apk" -print
-
-          if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "ERROR: APK was not generated."
-            exit 1
-          fi
-
-          echo ""
-          echo "APK successfully generated."
+          find . -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Blendora-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: "**/app/build/outputs/apk/debug/app-debug.apk"
           if-no-files-found: error
